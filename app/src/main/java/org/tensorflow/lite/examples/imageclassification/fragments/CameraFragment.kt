@@ -20,6 +20,7 @@ import android.annotation.SuppressLint
 import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.os.Bundle
+import android.speech.tts.TextToSpeech
 import android.util.DisplayMetrics
 import android.util.Log
 import android.view.*
@@ -40,6 +41,7 @@ import org.tensorflow.lite.examples.imageclassification.ImageClassifierHelper
 import org.tensorflow.lite.examples.imageclassification.R
 import org.tensorflow.lite.examples.imageclassification.databinding.FragmentCameraBinding
 import org.tensorflow.lite.task.vision.classifier.Classifications
+import java.util.Locale
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
@@ -64,6 +66,8 @@ class CameraFragment : Fragment(), ImageClassifierHelper.ClassifierListener {
     private var imageAnalyzer: ImageAnalysis? = null
     private var camera: Camera? = null
     private var cameraProvider: ProcessCameraProvider? = null
+    private var ultimoFalado: String? = null
+    private var tts: TextToSpeech? = null
 
     /** Blocking camera operations are performed using this executor */
     private lateinit var cameraExecutor: ExecutorService
@@ -83,6 +87,10 @@ class CameraFragment : Fragment(), ImageClassifierHelper.ClassifierListener {
 
         // Shut down our background executor
         cameraExecutor.shutdown()
+
+        tts?.stop()
+        tts?.shutdown()
+        tts = null
     }
 
     override fun onCreateView(
@@ -97,6 +105,12 @@ class CameraFragment : Fragment(), ImageClassifierHelper.ClassifierListener {
 
     @SuppressLint("MissingPermission")
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        tts = TextToSpeech(requireContext()) { status ->
+            if (status == TextToSpeech.SUCCESS) {
+                tts?.language = Locale("pt", "BR")  // ou outro idioma que desejar
+            }
+        }
+
         super.onViewCreated(view, savedInstanceState)
 
         imageClassifierHelper =
@@ -347,6 +361,24 @@ class CameraFragment : Fragment(), ImageClassifierHelper.ClassifierListener {
             classificationResultsAdapter.notifyDataSetChanged()
             fragmentCameraBinding.bottomSheetLayout.inferenceTimeVal.text =
                 String.format("%d ms", inferenceTime)
+
+            results?.let {
+                if (it.isNotEmpty() && it[0].categories.isNotEmpty()) {
+                    val topResult = it[0].categories[0].label
+                    val confidence = it[0].categories[0].score
+
+                    // Evita repetir sempre a mesma palavra
+                    if (confidence > 0.7f && topResult != ultimoFalado) {
+                        ultimoFalado = topResult
+                        tts?.speak(
+                            "$topResult reconhecido",
+                            TextToSpeech.QUEUE_FLUSH,
+                            null,
+                            null
+                        )
+                    }
+                }
+            }
         }
     }
 }
